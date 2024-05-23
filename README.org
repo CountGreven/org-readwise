@@ -1,0 +1,171 @@
+#+TITLE: org-readwise
+#+AUTHOR: CountGreven
+#+DESCRIPTION: Integrate Readwise with Org-mode
+#+KEYWORDS: org, readwise, emacs, highlights, notes
+
+* org-readwise
+
+org-readwise is an Emacs package that integrates the Readwise.io highlight syncing service with Org-mode. It allows you to sync your Readwise highlights and notes into your Org files.
+
+** Features
+- Sync highlights and notes from Readwise.io.
+- Output highlights and notes to an Org buffer or a specified file.
+- Supports customizable debug levels for detailed logging.
+- Handles pagination and updates efficiently.
+
+** Installation
+To install `org-readwise`, you can either use a package manager like `straight.el` or `quelpa`, or clone the repository manually.
+
+*** Using straight.el
+Ensure you have `straight.el` installed and then add the following to your Emacs configuration:
+
+#+BEGIN_SRC emacs-lisp
+;; Bootstrap straight.el
+(let ((bootstrap-file (concat user-emacs-directory "straight/repos/straight.el/bootstrap.el"))
+      (bootstrap-version 5))
+  (unless (file-exists-p bootstrap-file)
+    (with-current-buffer
+        (url-retrieve-synchronously
+         "https://raw.githubusercontent.com/raxod502/straight.el/develop/install.el"
+         'silent 'inhibit-cookies)
+      (goto-char (point-max))
+      (eval-print-last-sexp)))
+  (load bootstrap-file nil 'nomessage))
+
+(straight-use-package 'use-package)
+
+;; Install org-readwise from GitHub
+(use-package org-readwise
+  :straight (org-readwise :type git :host github :repo "CountGreven/org-readwise")
+  :config
+  ;; Ensure auth-source is configured to find your Readwise token
+  (setq auth-sources '("~/.authinfo.gpg"))
+  
+  ;; Set the output location for your highlights (buffer or file)
+  (setq org-readwise-output-location "~/org/readwise-highlights.org")
+  
+  ;; Optionally set the debug level (0 = no debug, 1 = basic debug, 2 = detailed debug)
+  (setq org-readwise-debug-level 1))
+#+END_SRC
+
+*** Using quelpa
+Ensure you have `quelpa` installed and then add the following to your Emacs configuration:
+
+#+BEGIN_SRC emacs-lisp
+;; Install quelpa
+(unless (package-installed-p 'quelpa)
+  (package-refresh-contents)
+  (package-install 'quelpa))
+
+;; Install org-readwise from GitHub using quelpa
+(use-package org-readwise
+  :quelpa (org-readwise :fetcher github :repo "CountGreven/org-readwise")
+  :config
+  ;; Ensure auth-source is configured to find your Readwise token
+  (setq auth-sources '("~/.authinfo.gpg"))
+  
+  ;; Set the output location for your highlights (buffer or file)
+  (setq org-readwise-output-location "~/org/readwise-highlights.org")
+  
+  ;; Optionally set the debug level (0 = no debug, 1 = basic debug, 2 = detailed debug)
+  (setq org-readwise-debug-level 1))
+#+END_SRC
+
+*** Manual Installation
+To install manually, clone the repository and load the package in your Emacs configuration:
+
+#+BEGIN_SRC sh
+git clone https://github.com/CountGreven/org-readwise.git ~/.emacs.d/org-readwise/
+#+END_SRC
+
+Then add the following to your Emacs configuration:
+
+#+BEGIN_SRC emacs-lisp
+(add-to-list 'load-path "~/.emacs.d/org-readwise/")
+(require 'org-readwise)
+
+;; Ensure auth-source is configured to find your Readwise token
+(setq auth-sources '("~/.authinfo.gpg"))
+
+;; Set the output location for your highlights (buffer or file)
+(setq org-readwise-output-location "~/org/readwise-highlights.org")
+
+;; Optionally set the debug level (0 = no debug, 1 = basic debug, 2 = detailed debug)
+(setq org-readwise-debug-level 1)
+#+END_SRC
+
+** Usage
+To use `org-readwise`, you need to configure it with your Readwise API token. The token should be stored in one of the files defined in `auth-sources`.
+
+Example configuration:
+
+#+BEGIN_SRC emacs-lisp
+;; Ensure auth-source is configured to find your Readwise token
+(setq auth-sources '("~/.authinfo.gpg"))
+
+;; Set the output location for your highlights (buffer or file)
+(setq org-readwise-output-location "~/org/readwise-highlights.org")
+
+;; Optionally set the debug level (0 = no debug, 1 = basic debug, 2 = detailed debug)
+(setq org-readwise-debug-level 1)
+
+;; Sync highlights
+(org-readwise-sync)
+#+END_SRC
+
+** Customization
+You can customize the behavior of `org-readwise` through the following variables:
+
+- `org-readwise-output-location`:
+  - Specify where to output the Readwise highlights: 'buffer or a file path.
+  - If set to 'buffer, an ephemeral buffer called *Readwise-Highlights* will be created where the highlights will be synced. This buffer will be temporary and is useful for quick reviews or temporary storage.
+  - Example: `(setq org-readwise-output-location 'buffer)` or `(setq org-readwise-output-location "~/org/readwise-highlights.org")`
+
+- `org-readwise-debug-level`:
+  - Specify the debug level for `org-readwise`.
+  - 0 = no debug output, 1 = basic debug output, 2 = detailed debug output.
+  - Example: `(setq org-readwise-debug-level 1)`
+
+** Timestamp File
+org-readwise uses a timestamp file to keep track of the last successful sync. This ensures that only highlights added or updated since the last sync are fetched, reducing the amount of data transferred and processed. The timestamp file location is customizable through `org-readwise-last-sync-time-file`, which defaults to `~/.emacs.d/org-readwise-last-sync`.
+
+You can customize the location of the timestamp file:
+
+#+BEGIN_SRC emacs-lisp
+;; Set the location of the last sync time file
+(setq org-readwise-last-sync-time-file "~/.emacs.d/org-readwise-last-sync")
+#+END_SRC
+
+** Example
+Here is a simple example of how to sync your highlights and notes:
+
+#+BEGIN_SRC emacs-lisp
+(require 'org-readwise)
+
+;; Set the output location
+(setq org-readwise-output-location "~/org/readwise-highlights.org")
+
+;; Sync highlights
+(org-readwise-sync)
+#+END_SRC
+
+** Contributing
+Contributions are welcome! Feel free to open issues or submit pull requests on the [[https://github.com/CountGreven/org-readwise][GitHub repository]].
+
+** License
+This package is licensed under the GNU General Public License v3.0. See the LICENSE file for details.
+
+#+BEGIN_QUOTE
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+#+END_QUOTE
