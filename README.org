@@ -113,6 +113,20 @@ Example configuration:
 (org-readwise-sync)
 #+END_SRC
 
+** Authinfo Configuration
+
+org-readwise requires an access token for Readwise, which should be stored in your `authinfo.pgp` file.
+
+Example `authinfo.pgp` entry:
+#+begin_example
+machine readwise.io login <your-email> password <your-readwise-token>
+#+end_example
+
+Here's the syntax breakdown:
+- `machine readwise.io`: The host for Readwise API.
+- `login <your-email>`: Your Readwise login email.
+- `password <your-readwise-token>`: Your Readwise access token.
+
 ** Customization
 You can customize the behavior of `org-readwise` through the following variables:
 
