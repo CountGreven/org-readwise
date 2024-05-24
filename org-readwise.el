@@ -62,6 +62,12 @@
 (defvar org-readwise-last-sync-time nil
   "The timestamp of the last successful sync.")
 
+(defun org-readwise-debug (level message &rest args)
+  "Log a debug message at LEVEL.
+MESSAGE is the format string, and ARGS are the arguments for the format string."
+  (when (>= org-readwise-debug-level level)
+    (apply #'message (concat "[org-readwise] " message) args)))
+
 (defun org-readwise--load-last-sync-time ()
   "Load the last sync time from `org-readwise-last-sync-time-file`."
   (when (file-exists-p org-readwise-last-sync-time-file)
@@ -213,17 +219,5 @@ If ALL is non-nil (when called with a universal argument), pull all highlights."
     (when output-file
       (with-temp-file output-file
         (insert-buffer-substring (or output-buffer (get-buffer-create "*Readwise Highlights*")))))))
-
-(defun org-readwise-debug (level message &rest args)
-  "Log a debug message at LEVEL.
-MESSAGE is the format string, and ARGS are the arguments for the format string."
-  (when (>= org-readwise-debug-level level)
-    (apply #'message (concat "[org-readwise] " message) args)))
-
-(defcustom org-readwise-debug-level 1
-  "Set the debug level for org-readwise.
-0 means no debug output, higher values produce more output."
-  :group 'org-readwise
-  :type 'integer)
 
 (provide 'org-readwise)
