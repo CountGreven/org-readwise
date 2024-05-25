@@ -150,18 +150,28 @@ You can customize the location of the timestamp file:
 (setq org-readwise-last-sync-time-file "~/.emacs.d/org-readwise-last-sync")
 #+END_SRC
 
-** Example
-Here is a simple example of how to sync your highlights and notes:
+** Usage
 
-#+BEGIN_SRC emacs-lisp
-(require 'org-readwise)
+To sync your Readwise highlights, run:
+#+begin_src emacs-lisp
+M-x org-readwise-sync
+#+end_src
 
-;; Set the output location
-(setq org-readwise-output-location "~/org/readwise-highlights.org")
+This will fetch your highlights and insert them into the specified output location. If using the buffer output, highlights will be displayed in a temporary buffer called `*Readwise Highlights*`.
 
-;; Sync highlights
-(org-readwise-sync)
-#+END_SRC
+To sync all highlights regardless of the last sync time, call the function with a universal argument:
+#+begin_src emacs-lisp
+C-u M-x org-readwise-sync
+#+end_src
+
+** Limitations
+
+- No real-time sync: Manual trigger required for syncing.
+- Single user setup: Designed for single user configurations.
+- Performance: Syncing a large number of highlights can be slow.
+- Customization needed: Advanced configurations might require code adjustments.
+- Overwrites buffer: Currently, the program will overwrite the buffer of highlights with the newly synced highlights.
+- No awareness of moved highlights: The program is not aware if the user moves a highlight, potentially causing duplication or loss of highlights.
 
 ** Contributing
 Contributions are welcome! Feel free to open issues or submit pull requests on the [[https://github.com/CountGreven/org-readwise][GitHub repository]].
