@@ -14,10 +14,10 @@ org-readwise is an Emacs package that integrates the Readwise.io highlight synci
 - Handles pagination and updates efficiently.
 
 ** Installation
-To install `org-readwise`, you can either use a package manager like `straight.el` or `quelpa`, or clone the repository manually.
+To install org-readwise, you can either use a package manager like straight.el or quelpa, or clone the repository manually.
 
 *** Using straight.el
-Ensure you have `straight.el` installed and then add the following to your Emacs configuration:
+Ensure you have straight.el installed and then add the following to your Emacs configuration:
 
 #+BEGIN_SRC emacs-lisp
 ;; Bootstrap straight.el
@@ -49,7 +49,7 @@ Ensure you have `straight.el` installed and then add the following to your Emacs
 #+END_SRC
 
 *** Using quelpa
-Ensure you have `quelpa` installed and then add the following to your Emacs configuration:
+Ensure you have quelpa installed and then add the following to your Emacs configuration:
 
 #+BEGIN_SRC emacs-lisp
 ;; Install quelpa
@@ -95,7 +95,7 @@ Then add the following to your Emacs configuration:
 #+END_SRC
 
 ** Usage
-To use `org-readwise`, you need to configure it with your Readwise API token. The token should be stored in one of the files defined in `auth-sources`.
+To use org-readwise, you need to configure it with your Readwise API token. The token should be stored in one of the files defined in auth-sources.
 
 Example configuration:
 
@@ -115,33 +115,43 @@ Example configuration:
 
 ** Authinfo Configuration
 
-org-readwise requires an access token for Readwise, which should be stored in your `authinfo.pgp` file.
+org-readwise requires an access token for Readwise, which should be stored in your authinfo.pgp file.
 
-Example `authinfo.pgp` entry:
+Example authinfo.pgp entry:
 #+begin_example
 machine readwise.io login <your-email> password <your-readwise-token>
 #+end_example
 
 Here's the syntax breakdown:
-- `machine readwise.io`: The host for Readwise API.
-- `login <your-email>`: Your Readwise login email.
-- `password <your-readwise-token>`: Your Readwise access token.
+- machine readwise.io: The host for Readwise API.
+- login <your-email>: Your Readwise login email.
+- password <your-readwise-token>: Your Readwise access token.
 
 ** Customization
-You can customize the behavior of `org-readwise` through the following variables:
+You can customize the behavior of org-readwise through the following variables:
 
-- `org-readwise-output-location`:
-  - Specify where to output the Readwise highlights: 'buffer or a file path.
-  - If set to 'buffer, an ephemeral buffer called *Readwise-Highlights* will be created where the highlights will be synced. This buffer will be temporary and is useful for quick reviews or temporary storage.
-  - Example: `(setq org-readwise-output-location 'buffer)` or `(setq org-readwise-output-location "~/org/readwise-highlights.org")`
+- org-readwise-output-location:
+  - Specify where to output the Readwise highlights: either a buffer or a file path.
+  - Example: (setq org-readwise-output-location "~/org/readwise-highlights.org")
 
-- `org-readwise-debug-level`:
-  - Specify the debug level for `org-readwise`.
+- org-readwise-debug-level:
+  - Specify the debug level for org-readwise.
   - 0 = no debug output, 1 = basic debug output, 2 = detailed debug output.
-  - Example: `(setq org-readwise-debug-level 1)`
+  - Example: (setq org-readwise-debug-level 1)
 
+- org-readwise-sync-highlights:
+  - Toggle whether to sync highlights from Readwise.
+  - Example: (setq org-readwise-sync-highlights t)
+
+- org-readwise-sync-reader:
+  - Toggle whether to sync documents from the Readwise Reader.
+  - Example: (setq org-readwise-sync-reader t)
+
+- org-readwise-last-sync-time-file:
+  - File to store the last sync timestamp to optimize the next sync.
+  - Example: (setq org-readwise-last-sync-time-file "~/.emacs.d/org-readwise-last-sync")
 ** Timestamp File
-org-readwise uses a timestamp file to keep track of the last successful sync. This ensures that only highlights added or updated since the last sync are fetched, reducing the amount of data transferred and processed. The timestamp file location is customizable through `org-readwise-last-sync-time-file`, which defaults to `~/.emacs.d/org-readwise-last-sync`.
+org-readwise uses a timestamp file to keep track of the last successful sync. This ensures that only highlights added or updated since the last sync are fetched, reducing the amount of data transferred and processed. The timestamp file location is customizable through org-readwise-last-sync-time-file, which defaults to ~/.emacs.d/org-readwise-last-sync.
 
 You can customize the location of the timestamp file:
 
@@ -157,7 +167,7 @@ To sync your Readwise highlights, run:
 M-x org-readwise-sync
 #+end_src
 
-This will fetch your highlights and insert them into the specified output location. If using the buffer output, highlights will be displayed in a temporary buffer called `*Readwise Highlights*`.
+This will fetch your highlights and insert them into the specified output location. If using the buffer output, highlights will be displayed in a temporary buffer called *Readwise Highlights*.
 
 To sync all highlights regardless of the last sync time, call the function with a universal argument:
 #+begin_src emacs-lisp
