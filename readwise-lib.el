@@ -27,7 +27,7 @@
 (require 'json)
 (require 'auth-source)
 
-(defvar readwise-api-base-url "https://readwise.io/api/v2"
+(defvar readwise-api-base-url "https://readwise.io/api/"
   "The base URL for the Readwise API.")
 
 (defcustom readwise-debug-level 0
@@ -88,7 +88,7 @@ ERROR-CALLBACK is called on error."
   (let ((data `(("title" . ,title)
                 ("author" . ,author))))
     (readwise-debug 1 "Creating book with title: %s, author: %s" title author)
-    (readwise-request "/books" "POST" data success-callback error-callback)))
+    (readwise-request "/v2/books" "POST" data success-callback error-callback)))
 
 (defun readwise-update-book (book-id title &optional author success-callback error-callback)
   "Update an existing book in Readwise with BOOK-ID, TITLE, and optional AUTHOR.
@@ -97,7 +97,7 @@ ERROR-CALLBACK is called on error."
   (let ((data `(("title" . ,title)
                 ("author" . ,author))))
     (readwise-debug 1 "Updating book ID: %s with title: %s, author: %s" book-id title author)
-    (readwise-request (format "/books/%s" book-id) "PUT" data success-callback error-callback)))
+    (readwise-request (format "/v2/books/%s" book-id) "PUT" data success-callback error-callback)))
 
 (defun readwise-delete-book (book-id success-callback error-callback)
   "Delete a book in Readwise with BOOK-ID.
@@ -115,7 +115,7 @@ ERROR-CALLBACK is called on error."
                 ("note" . ,note)
                 ("tags" . ,tags))))
     (readwise-debug 1 "Creating highlight in book ID: %s with text: %s" book-id text)
-    (readwise-request "/highlights" "POST" data success-callback error-callback)))
+    (readwise-request "/v2/highlights" "POST" data success-callback error-callback)))
 
 (defun readwise-update-highlight (highlight-id text &optional note tags success-callback error-callback)
   "Update an existing highlight in Readwise with HIGHLIGHT-ID, TEXT, and optional NOTE and TAGS.
@@ -125,27 +125,47 @@ ERROR-CALLBACK is called on error."
                 ("note" . ,note)
                 ("tags" . ,tags))))
     (readwise-debug 1 "Updating highlight ID: %s with text: %s" highlight-id text)
-    (readwise-request (format "/highlights/%s" highlight-id) "PUT" data success-callback error-callback)))
+    (readwise-request (format "/v2/highlights/%s" highlight-id) "PUT" data success-callback error-callback)))
 
 (defun readwise-delete-highlight (highlight-id success-callback error-callback)
   "Delete a highlight in Readwise with HIGHLIGHT-ID.
 SUCCESS-CALLBACK is called on success.
 ERROR-CALLBACK is called on error."
   (readwise-debug 1 "Deleting highlight ID: %s" highlight-id)
-  (readwise-request (format "/highlights/%s" highlight-id) "DELETE" nil success-callback error-callback))
+  (readwise-request (format "/v2/highlights/%s" highlight-id) "DELETE" nil success-callback error-callback))
 
 (defun readwise-get-highlights (&optional cursor updated-after success-callback error-callback)
   "Get highlights from Readwise.
 Optional CURSOR and UPDATED-AFTER parameters for pagination and filtering.
 SUCCESS-CALLBACK is called on success.
 ERROR-CALLBACK is called on error."
-  (let ((endpoint "/export"))
+  (let ((endpoint "/v2/export"))
     (when cursor
       (setq endpoint (concat endpoint "?pageCursor=" cursor)))
     (when updated-after
       (setq endpoint (concat endpoint (if cursor "&" "?") "updatedAfter=" (url-hexify-string updated-after))))
     (readwise-debug 1 "Fetching highlights with cursor: %s, updated-after: %s" cursor updated-after)
     (readwise-request endpoint "GET" nil success-callback error-callback)))
+
+(defun readwise-v3-create-document (title source-url &optional summary notes tags success-callback error-callback)
+  "Create a new document in Readwise API v3 with TITLE, SOURCE-URL, and optional SUMMARY, NOTES, and TAGS."
+  (let ((data `(("title" . ,title)
+                ("source_url" . ,source-url)
+                ("summary" . ,summary)
+                ("notes" . ,notes)
+                ("tags" . ,tags))))
+    (readwise-request "/v3/documents" "POST" data success-callback error-callback)))
+
+(defun readwise-v3-list-documents (&optional page-cursor updated-after success-callback error-callback)
+  "Fetch the list of documents from Readwise API v3. Handle pagination with PAGE-CURSOR and filter with UPDATED-AFTER."
+  (let ((endpoint (concat "/v3/list/"
+                          (when page-cursor (concat "?pageCursor=" page-cursor))
+                          (when updated-after
+                            (concat (if page-cursor "&" "?")
+                                    "updated_after=" (url-hexify-string updated-after))))))
+    (readwise-request endpoint "GET" nil success-callback error-callback)))
+
+
 
 (provide 'readwise-lib)
 

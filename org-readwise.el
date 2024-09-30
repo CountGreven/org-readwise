@@ -1,7 +1,7 @@
 ;;; org-readwise.el --- Sync Readwise highlights with Org-mode -*- lexical-binding: t; -*-
 ;; Author: CountGreven
 ;; URL: https://github.com/CountGreven/org-readwise
-;; Version: 0.1
+;; Version: 0.2
 ;; Package-Requires: ((emacs "24.3") (request "0.3.2") (org "9.1"))
 ;; Keywords: tools, convenience, outlines, hypermedia
 
@@ -196,13 +196,58 @@ BUFFER is the buffer or file to insert the heading into."
           (goto-char (point-min))
           (display-buffer (current-buffer)))))))
 
+(defun org-readwise--get-documents (&optional page-cursor updated-after)
+  "Get documents from the Readwise API v3, handling pagination with PAGE-CURSOR.
+Include the UPDATED-AFTER parameter only in the initial request."
+  (org-readwise-debug 1 "Fetching documents with cursor: %s, updated-after: %s" page-cursor updated-after)
+  (readwise-v3-list-documents page-cursor updated-after
+                              (lambda (data)
+                                (let ((results (assoc-default 'results data)))
+                                  (if results
+                                      (org-readwise--process-documents results (get-buffer-create "*Readwise Highlights*"))
+                                    (org-readwise-debug 1 "No documents found"))))
+                              (lambda (error)
+                                (org-readwise-debug 1 "Error fetching documents: %S" error)
+                                (message "Error fetching documents: %S" error))))
+
+(defun org-readwise--process-document (document buffer &optional parent-id)
+  "Process a single DOCUMENT and insert its details into BUFFER.
+If PARENT-ID is provided, insert the document as a subheading under the parent."
+  (let* ((doc-id (assoc-default 'id document))
+         (title (or (assoc-default 'title document) "No Title"))
+         (author (assoc-default 'author document))
+         (summary (assoc-default 'summary document))
+         (notes (assoc-default 'notes document))
+         (source-url (assoc-default 'source_url document))
+         (tags (mapconcat 'identity (assoc-default 'tags document) ":"))
+         (level (if parent-id 2 1))) ;; Indent as a subheading if it has a parent
+    (org-readwise--insert-org-heading level title doc-id author source-url summary tags buffer)
+    (when notes
+      (org-readwise--insert-org-heading (1+ level) "Notes" (concat doc-id "-notes") nil nil notes nil buffer))))
+
+
+(defun org-readwise--process-documents (documents buffer)
+  "Process documents data and insert them into Org mode, handling parent-child relationships."
+  (let ((document-hash (make-hash-table :test 'equal)))
+    ;; First, populate the hash table with all documents by their IDs
+    (dolist (document documents)
+      (puthash (assoc-default 'id document) document document-hash))
+    ;; Now process each document
+    (dolist (document documents)
+      (let ((parent-id (assoc-default 'parent_id document)))
+        (if parent-id
+            (let ((parent-document (gethash parent-id document-hash)))
+              (when parent-document
+                (org-readwise--process-document document buffer parent-id)))
+          (org-readwise--process-document document buffer))))))
+
 (defun string-empty-p (str)
   "Check whether STR is empty."
   (string= str ""))
 
 (defun org-readwise-sync (&optional all)
-  "Synchronize highlights from Readwise and insert them into an Org buffer or file.
-If ALL is non-nil (when called with a universal argument), pull all highlights."
+  "Synchronize highlights and documents from Readwise and insert them into an Org buffer or file.
+If ALL is non-nil (when called with a universal argument), pull all highlights and documents."
   (interactive "P")
   (let* ((output-buffer (when (eq org-readwise-output-location 'buffer)
                           (get-buffer-create "*Readwise Highlights*")))
@@ -214,7 +259,14 @@ If ALL is non-nil (when called with a universal argument), pull all highlights."
         (erase-buffer)))
     (org-readwise--load-last-sync-time)
     (let ((updated-after (unless all org-readwise-last-sync-time)))
+      ;; Sync highlights from v2
       (org-readwise--get-highlights nil updated-after)
+      ;; Sync documents from v3 with updated-after
+      (readwise-v3-list-documents nil updated-after
+                                  (lambda (data)
+                                    (org-readwise--process-documents (assoc-default 'results data) output-buffer))
+                                  (lambda (error) (message "Error fetching documents: %S" error)))
+      ;; Save the last sync time
       (org-readwise--save-last-sync-time (format-time-string "%Y-%m-%dT%H:%M:%S%z")))
     (when output-file
       (with-temp-file output-file
