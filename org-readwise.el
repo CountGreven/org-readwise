@@ -32,7 +32,6 @@
 (require 'json)
 (require 'readwise-lib)
 
-(defvar org-readwise--sync-url "https://readwise.io/api/v2/export")
 (defvar org-readwise--last-cursor nil
   "Tracks the last cursor received from the Readwise API during pagination.")
 
@@ -52,6 +51,16 @@
   :group 'org-readwise
   :type '(choice (const :tag "Buffer" buffer)
                  (file :tag "File")))
+
+(defcustom org-readwise-sync-highlights t
+  "Toggle whether to sync Readwise highlights."
+  :group 'org-readwise
+  :type 'boolean)
+
+(defcustom org-readwise-sync-reader t
+  "Toggle whether to sync Readwise reader documents."
+  :group 'org-readwise
+  :type 'boolean)
 
 (defcustom org-readwise-debug-level 0
   "Debug level for the org-readwise package.
@@ -101,10 +110,9 @@ token. It returns a list containing the token and a save function."
   "Get highlights from the Readwise API, handling pagination with CURSOR.
 Include the UPDATED-AFTER parameter only in the initial request."
   (let* ((token-header (list (cons "Authorization" (concat "Token " (nth 0 (org-readwise--get-access-token))))))
-         (url (if cursor
-                  (concat org-readwise--sync-url "?pageCursor=" (format "%s" cursor))
-                (concat org-readwise--sync-url
-                        (when updated-after (concat "?updatedAfter=" (url-hexify-string updated-after)))))))
+         (url (concat readwise-api-base-url "/v2/export"
+                      (when cursor (concat "?pageCursor=" (format "%s" cursor)))
+                      (when updated-after (concat (if cursor "&" "?") "updatedAfter=" (url-hexify-string updated-after))))))
     (org-readwise-debug 1 "Making request to: %s" url)
     (request url
       :headers token-header
@@ -113,7 +121,8 @@ Include the UPDATED-AFTER parameter only in the initial request."
                 (lambda (&key data &allow-other-keys)
                   (org-readwise-debug 2 "Response Data: %S" data)
                   (let ((results (assoc-default 'results data))
-                        (next-cursor (assoc-default 'nextPageCursor data)))
+                        (next-cursor (let ((nc (assoc-default 'nextPageCursor data)))
+                                       (if (numberp nc) (number-to-string nc) nc))))
                     (when results
                       (org-readwise--process-highlights results))
                     (if (and next-cursor (not (string-empty-p next-cursor))
@@ -129,7 +138,7 @@ Include the UPDATED-AFTER parameter only in the initial request."
                        (detail (assoc-default 'detail data))
                        (retry-seconds (if retry-after
                                           (string-to-number retry-after)
-                                        (if (string-match "in \\([0-9]+\\) seconds" detail)
+                                        (if (and detail (string-match "in \\([0-9]+\\) seconds" detail))
                                             (string-to-number (match-string 1 detail))
                                           30))))  ;; Default to 30 seconds if no information is available
                   (if (eq status-code 429)
@@ -138,6 +147,7 @@ Include the UPDATED-AFTER parameter only in the initial request."
                         (run-at-time retry-seconds nil #'org-readwise--get-highlights cursor updated-after))
                     (org-readwise-debug 1 "Error Response: %S" response)
                     (message "Error fetching highlights: %S" status-code))))))))
+
 
 
 (defun org-readwise--insert-org-heading (level title id &optional author url body tags buffer)
@@ -156,7 +166,7 @@ BUFFER is the buffer or file to insert the heading into."
       (insert (format " :%s:" tags)))
     (insert "\n  :PROPERTIES:\n  :ID: " id "\n")
     (when author
-      (setq author (replace-regexp-in-string "\n" " " author))  ; Replace newlines with spaces
+      (setq author (replace-regexp-in-string "\n" " " author)) ; Replace newlines with spaces
       (insert (format "  :AUTHOR: %s\n" author)))
     (when url
       (insert (format "  :URL: %s\n" url)))
@@ -177,7 +187,7 @@ BUFFER is the buffer or file to insert the heading into."
 
 (defun org-readwise--process-book (book buffer)
   "Process a single BOOK and insert its details into BUFFER."
-  (let* ((book-id (number-to-string (assoc-default 'user_book_id book)))
+  (let* ((book-id (number-to-string (assoc-default 'user_book_id book))) ;; Ensure book ID is a string
          (title (or (assoc-default 'title book) "No Title"))
          (author (assoc-default 'author book))
          (tags (mapconcat (lambda (tag) (assoc-default 'name tag))
@@ -190,6 +200,7 @@ BUFFER is the buffer or file to insert the heading into."
         (setq highlights (append highlights nil)))
       (dolist (highlight highlights)
         (org-readwise--process-highlight highlight buffer)))))
+
 
 (defun org-readwise--process-highlights (results)
   "Process highlights data and print it in a structured way."
@@ -271,7 +282,7 @@ If PARENT-ID is provided, insert the document as a subheading under the parent."
     (org-readwise-debug 2 "Inserting document with ID: %s, Title: %s" doc-id title)
     ;; Convert tags to a string if necessary and ensure it's a list of strings
     (when (and tags (listp tags))
-      (org-readwise-debug 2 "Processing tags for document ID: %s" doc-id)
+      (org-readwise-debug 1 "Processing tags for document ID: %s" doc-id)
       (setq tags (mapconcat (lambda (tag)
                               (if (stringp tag)
                                   tag
@@ -305,22 +316,22 @@ If PARENT-ID is provided, insert the document as a subheading under the parent."
         (let ((doc-id (assoc-default 'id document))
               (parent-id (assoc-default 'parent_id document)))
           (unless (gethash doc-id processed-ids)  ;; Skip if document is already processed
-            (org-readwise-debug 2 "Processing document with ID: %s" doc-id)
+            (org-readwise-debug 1 "Processing document with ID: %s" doc-id)
             (if parent-id
                 (let ((parent-document (gethash parent-id document-hash)))
                   (if (and parent-document (not (gethash parent-id processed-ids)))
                       (progn
                         (org-readwise-debug 2 "Found parent document with ID: %s for document: %s" parent-id doc-id)
                         (org-readwise--process-document document buffer parent-id))
-                    (org-readwise-debug 2 "Parent document with ID: %s not found for document: %s" parent-id doc-id)))
+                    (org-readwise-debug 1 "Parent document with ID: %s not found for document: %s" parent-id doc-id)))
               (org-readwise--process-document document buffer))
             ;; Mark as processed and log the action
-            (org-readwise-debug 2 "Document with ID: %s has been processed" doc-id)
+            (org-readwise-debug 1 "Document with ID: %s has been processed" doc-id)
             (puthash doc-id t processed-ids)))))))
 
 (defun string-empty-p (str)
-  "Check whether STR is empty."
-  (string= str ""))
+  "Check whether STR, coerced to a string, is empty."
+  (string= (format "%s" str) ""))
 
 (defun org-readwise--get-next-page-cursors (&optional cursor updated-after)
   "Get nextPageCursor from the Readwise API v3, handling pagination with CURSOR."
@@ -359,6 +370,73 @@ If PARENT-ID is provided, insert the document as a subheading under the parent."
   "Synchronize highlights and documents from Readwise and insert them into an Org buffer or file.
 If ALL is non-nil (when called with a universal argument), pull all highlights and documents."
   (interactive "P")
+  ;; Explicitly initialize output-buffer and output-file to nil
+  (let* ((output-buffer nil)
+         (output-file nil))
+
+    ;; Log initialization
+    (org-readwise-debug 1 "Initializing output-buffer and output-file as nil.")
+
+    ;; Set output-buffer or output-file based on user preferences
+    (setq output-buffer (if (eq org-readwise-output-location 'buffer)
+                            (get-buffer-create "*Readwise Highlights*")
+                          nil))
+
+    (setq output-file (if (and (stringp org-readwise-output-location)
+                               (not (eq org-readwise-output-location 'buffer)))
+                          org-readwise-output-location
+                        nil))
+
+    ;; Log post-setup values
+    (org-readwise-debug 1 "After initialization: output-buffer: %s, output-file: %s"
+                        (if output-buffer "set" "nil")
+                        (if output-file "set" "nil"))
+
+    ;; Check if neither output-buffer nor output-file is set
+    (unless (or output-buffer output-file)
+      (org-readwise-debug 1 "Neither output-buffer nor output-file is set. Exiting sync.")
+      (message "No output buffer or file specified. Exiting sync.")
+      (return-from org-readwise-sync))
+
+    ;; Continue with sync logic
+    (when output-buffer
+      (with-current-buffer output-buffer
+        (erase-buffer)
+        (org-readwise-debug 1 "Erased output-buffer.")))
+
+    (setq org-readwise--last-cursor nil)  ;; Reset the cursor before sync
+    (org-readwise--load-last-sync-time)
+    (let ((updated-after (unless all org-readwise-last-sync-time)))
+      ;; Sync highlights from v2 if enabled
+      (when org-readwise-sync-highlights
+        (org-readwise-debug 1 "Syncing highlights...")
+        (org-readwise--get-highlights nil updated-after))
+      ;; Sync documents from v3 if enabled
+      (when org-readwise-sync-reader
+        (org-readwise-debug 1 "Syncing documents...")
+        (org-readwise--get-documents nil updated-after))
+      ;; Save the last sync time
+      (org-readwise--save-last-sync-time (format-time-string "%Y-%m-%dT%H:%M:%S%z"))))
+
+  ;; Write to the file if output-file is provided
+  (when output-file
+    (org-readwise-debug 1 "Writing output to file: %s" output-file)
+    (with-temp-file output-file
+      (when output-buffer  ;; Ensure output-buffer exists
+        (insert-buffer-substring output-buffer))))
+
+  ;; Check for output-buffer being displayed
+  (when output-buffer
+    (with-current-buffer output-buffer
+      (org-mode)
+      (goto-char (point-min))
+      (org-readwise-debug 1 "Displaying output-buffer.")
+      (display-buffer (current-buffer)))))
+
+(defun org-readwise-sync (&optional all)
+  "Synchronize highlights and documents from Readwise and insert them into an Org buffer or file.
+If ALL is non-nil (when called with a universal argument), pull all highlights and documents."
+  (interactive "P")
   (let* ((output-buffer (when (eq org-readwise-output-location 'buffer)
                           (get-buffer-create "*Readwise Highlights*")))
          (output-file (when (and (stringp org-readwise-output-location)
@@ -370,14 +448,28 @@ If ALL is non-nil (when called with a universal argument), pull all highlights a
     (setq org-readwise--last-cursor nil)  ;; Reset the cursor before sync
     (org-readwise--load-last-sync-time)
     (let ((updated-after (unless all org-readwise-last-sync-time)))
-      ;; Sync highlights from v2
-      (org-readwise--get-highlights nil updated-after)
-      ;; Sync documents from v3 with updated-after
-      (org-readwise--get-documents nil updated-after)
+      ;; Sync highlights from v2 if enabled
+      (when org-readwise-sync-highlights
+        (org-readwise--get-highlights nil updated-after))
+      ;; Sync documents from v3 if enabled
+      (when org-readwise-sync-reader
+        (org-readwise--get-documents nil updated-after))
       ;; Save the last sync time
-      (org-readwise--save-last-sync-time (format-time-string "%Y-%m-%dT%H:%M:%S%z")))
-    (when output-file
-      (with-temp-file output-file
-        (insert-buffer-substring (or output-buffer (get-buffer-create "*Readwise Highlights*")))))))
+      (org-readwise--save-last-sync-time (format-time-string "%Y-%m-%dT%H:%M:%S%z"))))
+
+  ;; Writing to file if output-file is non-nil
+  (when (and (boundp 'output-file) output-file)
+    (org-readwise-debug 1 "Writing output to file: %s" output-file)
+    (with-temp-file output-file
+      (when output-buffer
+        (insert-buffer-substring output-buffer))))
+
+  (when (and (boundp 'output-buffer) output-buffer)
+    (with-current-buffer output-buffer
+      (org-mode)
+      (goto-char (point-min))
+      (display-buffer (current-buffer)))))
+
+
 
 (provide 'org-readwise)
