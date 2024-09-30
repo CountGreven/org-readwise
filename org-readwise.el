@@ -33,6 +33,8 @@
 (require 'readwise-lib)
 
 (defvar org-readwise--sync-url "https://readwise.io/api/v2/export")
+(defvar org-readwise--last-cursor nil
+  "Tracks the last cursor received from the Readwise API during pagination.")
 
 (defgroup org-readwise ()
   "Integrate the Readwise.io highlight syncing service with `org-mode`."
@@ -103,22 +105,40 @@ Include the UPDATED-AFTER parameter only in the initial request."
                   (concat org-readwise--sync-url "?pageCursor=" (format "%s" cursor))
                 (concat org-readwise--sync-url
                         (when updated-after (concat "?updatedAfter=" (url-hexify-string updated-after)))))))
+    (org-readwise-debug 1 "Making request to: %s" url)
     (request url
       :headers token-header
       :parser 'json-read
       :success (cl-function
                 (lambda (&key data &allow-other-keys)
+                  (org-readwise-debug 2 "Response Data: %S" data)
                   (let ((results (assoc-default 'results data))
                         (next-cursor (assoc-default 'nextPageCursor data)))
-                    (when (vectorp results)
-                      (setq results (append results nil)))
-                    (org-readwise--process-highlights results)
-                    (when next-cursor
-                      (org-readwise--get-highlights next-cursor updated-after)))))
+                    (when results
+                      (org-readwise--process-highlights results))
+                    (if (and next-cursor (not (string-empty-p next-cursor))
+                             (not (string= next-cursor org-readwise--last-cursor)))
+                        (progn
+                          (setq org-readwise--last-cursor next-cursor)
+                          (org-readwise--get-highlights next-cursor updated-after))
+                      (org-readwise-debug 1 "No more pages to fetch or cursor repeated, stopping pagination.")))))
       :error (cl-function
-              (lambda (&key error-thrown &allow-other-keys)
-                (message "Got error: %S" error-thrown))))
-    :status-code '((401 . (lambda (&rest _) (message "Unauthorized"))))))
+              (lambda (&key response data &allow-other-keys)
+                (let* ((status-code (request-response-status-code response))
+                       (retry-after (assoc-default 'Retry-After (request-response-headers response)))
+                       (detail (assoc-default 'detail data))
+                       (retry-seconds (if retry-after
+                                          (string-to-number retry-after)
+                                        (if (string-match "in \\([0-9]+\\) seconds" detail)
+                                            (string-to-number (match-string 1 detail))
+                                          30))))  ;; Default to 30 seconds if no information is available
+                  (if (eq status-code 429)
+                      (progn
+                        (org-readwise-debug 1 "Rate limit hit, retrying after %s seconds" retry-seconds)
+                        (run-at-time retry-seconds nil #'org-readwise--get-highlights cursor updated-after))
+                    (org-readwise-debug 1 "Error Response: %S" response)
+                    (message "Error fetching highlights: %S" status-code))))))))
+
 
 (defun org-readwise--insert-org-heading (level title id &optional author url body tags buffer)
   "Insert an org-mode heading.
@@ -196,19 +216,47 @@ BUFFER is the buffer or file to insert the heading into."
           (goto-char (point-min))
           (display-buffer (current-buffer)))))))
 
-(defun org-readwise--get-documents (&optional page-cursor updated-after)
-  "Get documents from the Readwise API v3, handling pagination with PAGE-CURSOR.
+(defun org-readwise--get-documents (&optional cursor updated-after)
+  "Get documents from the Readwise API v3, handling pagination with CURSOR.
 Include the UPDATED-AFTER parameter only in the initial request."
-  (org-readwise-debug 1 "Fetching documents with cursor: %s, updated-after: %s" page-cursor updated-after)
-  (readwise-v3-list-documents page-cursor updated-after
-                              (lambda (data)
-                                (let ((results (assoc-default 'results data)))
-                                  (if results
-                                      (org-readwise--process-documents results (get-buffer-create "*Readwise Highlights*"))
-                                    (org-readwise-debug 1 "No documents found"))))
-                              (lambda (error)
-                                (org-readwise-debug 1 "Error fetching documents: %S" error)
-                                (message "Error fetching documents: %S" error))))
+  (let* ((token-header (list (cons "Authorization" (concat "Token " (nth 0 (org-readwise--get-access-token))))))
+         (url (concat "https://readwise.io/api/v3/list/"
+                      (when cursor (concat "?pageCursor=" cursor))
+                      (when updated-after (concat (if cursor "&" "?") "updatedAfter=" (url-hexify-string updated-after))))))
+    (org-readwise-debug 1 "Making request to: %s" url)
+    (request url
+      :headers token-header
+      :parser 'json-read
+      :success (cl-function
+                (lambda (&key data &allow-other-keys)
+                  (org-readwise-debug 2 "Response Data: %S" data)
+                  (let ((results (assoc-default 'results data))
+                        (next-cursor (assoc-default 'nextPageCursor data)))
+                    (when results
+                      (org-readwise--process-documents results (get-buffer-create "*Readwise Highlights*")))
+                    (if (and next-cursor (not (string-empty-p next-cursor))
+                             (not (string= next-cursor org-readwise--last-cursor)))
+                        (progn
+                          (setq org-readwise--last-cursor next-cursor)
+                          (org-readwise--get-documents next-cursor updated-after))
+                      (org-readwise-debug 1 "No more pages to fetch or cursor repeated, stopping pagination.")))))
+      :error (cl-function
+              (lambda (&key response data &allow-other-keys)
+                (let* ((status-code (request-response-status-code response))
+                       (retry-after (assoc-default 'Retry-After (request-response-headers response)))
+                       (detail (assoc-default 'detail data))
+                       (retry-seconds (if retry-after
+                                          (string-to-number retry-after)
+                                        (if (string-match "in \\([0-9]+\\) seconds" detail)
+                                            (string-to-number (match-string 1 detail))
+                                          30))))  ;; Default to 30 seconds if no information is available
+                  (if (eq status-code 429)
+                      (progn
+                        (org-readwise-debug 1 "Rate limit hit, retrying after %s seconds" retry-seconds)
+                        (run-at-time retry-seconds nil #'org-readwise--get-documents cursor updated-after))
+                    (org-readwise-debug 1 "Error Response: %S" response)
+                    (message "Error fetching documents: %S" status-code))))))))
+
 
 (defun org-readwise--process-document (document buffer &optional parent-id)
   "Process a single DOCUMENT and insert its details into BUFFER.
@@ -219,31 +267,93 @@ If PARENT-ID is provided, insert the document as a subheading under the parent."
          (summary (assoc-default 'summary document))
          (notes (assoc-default 'notes document))
          (source-url (assoc-default 'source_url document))
-         (tags (mapconcat 'identity (assoc-default 'tags document) ":"))
-         (level (if parent-id 2 1))) ;; Indent as a subheading if it has a parent
-    (org-readwise--insert-org-heading level title doc-id author source-url summary tags buffer)
-    (when notes
-      (org-readwise--insert-org-heading (1+ level) "Notes" (concat doc-id "-notes") nil nil notes nil buffer))))
+         (tags (assoc-default 'tags document)))
+    (org-readwise-debug 2 "Inserting document with ID: %s, Title: %s" doc-id title)
+    ;; Convert tags to a string if necessary and ensure it's a list of strings
+    (when (and tags (listp tags))
+      (org-readwise-debug 2 "Processing tags for document ID: %s" doc-id)
+      (setq tags (mapconcat (lambda (tag)
+                              (if (stringp tag)
+                                  tag
+                                (assoc-default 'name tag))) ;; Ensure we only get the string 'name'
+                            tags ":")))
+    (org-readwise--insert-org-heading (if parent-id 2 1) title doc-id author source-url summary tags buffer)
+    ;; Only insert notes if they are not null and not empty
+    (when (and notes (not (string-empty-p notes)))
+      (org-readwise--insert-org-heading (if parent-id 3 2) "Notes" (concat doc-id "-notes") nil nil notes nil buffer))))
 
 
 (defun org-readwise--process-documents (documents buffer)
   "Process documents data and insert them into Org mode, handling parent-child relationships."
-  (let ((document-hash (make-hash-table :test 'equal)))
-    ;; First, populate the hash table with all documents by their IDs
-    (dolist (document documents)
-      (puthash (assoc-default 'id document) document document-hash))
-    ;; Now process each document
-    (dolist (document documents)
-      (let ((parent-id (assoc-default 'parent_id document)))
-        (if parent-id
-            (let ((parent-document (gethash parent-id document-hash)))
-              (when parent-document
-                (org-readwise--process-document document buffer parent-id)))
-          (org-readwise--process-document document buffer))))))
+  ;; Convert documents to a list if it's a vector
+  (when (vectorp documents)
+    (org-readwise-debug 2 "Converting documents vector to list")
+    (setq documents (append documents nil)))  ;; Convert vector to list
+
+  ;; Ensure it's a list before proceeding
+  (when (listp documents)
+    (org-readwise-debug 1 "Processing %d documents" (length documents))
+    (let ((document-hash (make-hash-table :test 'equal))
+          (processed-ids (make-hash-table :test 'equal)))  ;; Keep track of processed documents
+      ;; First, populate the hash table with all documents by their IDs
+      (dolist (document documents)
+        (let ((doc-id (assoc-default 'id document)))
+          (org-readwise-debug 2 "Adding document to hash with ID: %s" doc-id)
+          (puthash doc-id document document-hash)))
+      ;; Now process each document
+      (dolist (document documents)
+        (let ((doc-id (assoc-default 'id document))
+              (parent-id (assoc-default 'parent_id document)))
+          (unless (gethash doc-id processed-ids)  ;; Skip if document is already processed
+            (org-readwise-debug 2 "Processing document with ID: %s" doc-id)
+            (if parent-id
+                (let ((parent-document (gethash parent-id document-hash)))
+                  (if (and parent-document (not (gethash parent-id processed-ids)))
+                      (progn
+                        (org-readwise-debug 2 "Found parent document with ID: %s for document: %s" parent-id doc-id)
+                        (org-readwise--process-document document buffer parent-id))
+                    (org-readwise-debug 2 "Parent document with ID: %s not found for document: %s" parent-id doc-id)))
+              (org-readwise--process-document document buffer))
+            ;; Mark as processed and log the action
+            (org-readwise-debug 2 "Document with ID: %s has been processed" doc-id)
+            (puthash doc-id t processed-ids)))))))
 
 (defun string-empty-p (str)
   "Check whether STR is empty."
   (string= str ""))
+
+(defun org-readwise--get-next-page-cursors (&optional cursor updated-after)
+  "Get nextPageCursor from the Readwise API v3, handling pagination with CURSOR."
+  (let* ((token-header (list (cons "Authorization" (concat "Token " (nth 0 (org-readwise--get-access-token))))))
+         (url (concat "https://readwise.io/api/v3/list/"
+                      (when cursor (concat "?pageCursor=" cursor))
+                      (when updated-after (concat (if cursor "&" "?") "updatedAfter=" (url-hexify-string updated-after))))))
+    (request url
+      :headers token-header
+      :parser 'json-read
+      :success
+      (cl-function
+       (lambda (&key data &allow-other-keys)
+         (let ((next-cursor (assoc-default 'nextPageCursor data)))
+           ;; Print nextPageCursor at debug level 1
+           (when next-cursor
+             (org-readwise-debug 1 "Next Page Cursor: %s" next-cursor))
+           ;; The rest of the processing at debug level 2
+           (org-readwise-debug 2 "Response Data: %S" data)
+           (when (and next-cursor (not (string= next-cursor cursor))) ;; Avoid looping on the same cursor
+             (org-readwise--get-next-page-cursors next-cursor updated-after)))))
+      :error (cl-function
+              (lambda (&key response &allow-other-keys)
+                (message "Error fetching documents: %S" (request-response-status-code response)))))
+    :status-code '((401 . (lambda (&rest _) (message "Unauthorized"))))))
+
+(defun org-readwise-sync-cursors (&optional all)
+  "Print only nextPageCursor from Readwise during pagination."
+  (interactive "P")
+  (setq org-readwise--last-cursor nil)  ;; Reset the cursor before sync
+  (org-readwise--load-last-sync-time)
+  (let ((updated-after (unless all org-readwise-last-sync-time)))
+    (org-readwise--get-next-page-cursors nil updated-after)))
 
 (defun org-readwise-sync (&optional all)
   "Synchronize highlights and documents from Readwise and insert them into an Org buffer or file.
@@ -257,15 +367,13 @@ If ALL is non-nil (when called with a universal argument), pull all highlights a
     (when output-buffer
       (with-current-buffer output-buffer
         (erase-buffer)))
+    (setq org-readwise--last-cursor nil)  ;; Reset the cursor before sync
     (org-readwise--load-last-sync-time)
     (let ((updated-after (unless all org-readwise-last-sync-time)))
       ;; Sync highlights from v2
       (org-readwise--get-highlights nil updated-after)
       ;; Sync documents from v3 with updated-after
-      (readwise-v3-list-documents nil updated-after
-                                  (lambda (data)
-                                    (org-readwise--process-documents (assoc-default 'results data) output-buffer))
-                                  (lambda (error) (message "Error fetching documents: %S" error)))
+      (org-readwise--get-documents nil updated-after)
       ;; Save the last sync time
       (org-readwise--save-last-sync-time (format-time-string "%Y-%m-%dT%H:%M:%S%z")))
     (when output-file
