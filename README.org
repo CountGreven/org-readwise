@@ -9,6 +9,7 @@ org-readwise is an Emacs package that integrates the Readwise.io highlight synci
 
 ** Features
 - Sync highlights and notes from Readwise.io.
+- Sync documents highlights and notes from read.readwise.io
 - Output highlights and notes to an Org buffer or a specified file.
 - Supports customizable debug levels for detailed logging.
 - Handles pagination and updates efficiently.
@@ -179,9 +180,11 @@ C-u M-x org-readwise-sync
 - No real-time sync: Manual trigger required for syncing.
 - Single user setup: Designed for single user configurations.
 - Performance: Syncing a large number of highlights can be slow.
+  - Initial sync from readwise reader is slow. And sadly during the sync you will lock your emacs instance. Sorry!
 - Customization needed: Advanced configurations might require code adjustments.
 - Overwrites buffer: Currently, the program will overwrite the buffer of highlights with the newly synced highlights.
 - No awareness of moved highlights: The program is not aware if the user moves a highlight, potentially causing duplication or loss of highlights.
+
 
 ** Contributing
 Contributions are welcome! Feel free to open issues or submit pull requests on the [[https://github.com/CountGreven/org-readwise][GitHub repository]].
