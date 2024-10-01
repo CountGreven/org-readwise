@@ -129,7 +129,10 @@ Here's the syntax breakdown:
 - password <your-readwise-token>: Your Readwise access token.
 
 ** Customization
-You can customize the behavior of org-readwise through the following variables:
+All customization of ~Org-Readwise~ is posssible via emacs customization
+manager. But in order to produce reproducible configs you can you can
+customize the behavior of org-readwise through the following
+variables:
 
 - org-readwise-output-location:
   - Specify where to output the Readwise highlights: either a buffer or a file path.
