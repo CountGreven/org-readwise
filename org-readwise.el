@@ -110,7 +110,7 @@ token. It returns a list containing the token and a save function."
   "Get highlights from the Readwise API, handling pagination with CURSOR.
 Include the UPDATED-AFTER parameter only in the initial request."
   (let* ((token-header (list (cons "Authorization" (concat "Token " (nth 0 (org-readwise--get-access-token))))))
-         (url (concat readwise-api-base-url "/v2/export"
+         (url (concat readwise-api-base-url "v2/export"
                       (when cursor (concat "?pageCursor=" (format "%s" cursor)))
                       (when updated-after (concat (if cursor "&" "?") "updatedAfter=" (url-hexify-string updated-after))))))
     (org-readwise-debug 1 "Making request to: %s" url)
