@@ -70,6 +70,14 @@
   :group 'org-readwise
   :type 'integer)
 
+(defcustom org-readwise-auth-source 'auth-source
+  "Authentication source to use for retrieving the Readwise API token.
+'auth-source - Use standard auth-source (default).
+'auth-source-pass - Use auth-source-pass (pass/password-store)."
+  :group 'org-readwise
+  :type '(choice (const :tag "Standard auth-source (default)" auth-source)
+                 (const :tag "Password Store (pass)" auth-source-pass)))
+
 (defvar org-readwise-last-sync-time nil
   "The timestamp of the last successful sync.")
 
@@ -97,7 +105,11 @@ MESSAGE is the format string, and ARGS are the arguments for the format string."
 This function expects the token to be present in one of the files defined in
 `auth-sources`. If it is not present, it will prompt the user for their access
 token. It returns a list containing the token and a save function."
-  (let ((found (nth 0 (auth-source-search :host "readwise.io"))))
+  (let ((found (if (eq org-readwise-auth-source 'auth-source-pass)
+                   (progn
+                     (require 'auth-source-pass)
+                     (car (auth-source-pass-search :host "readwise.io")))
+                 (nth 0 (auth-source-search :host "readwise.io")))))
     (if found
         (list (let ((secret (plist-get found :secret)))
                 (if (functionp secret)
